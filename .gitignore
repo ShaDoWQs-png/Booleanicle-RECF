@@ -15,3 +15,6 @@ temp.log
 temp.errors
 *.ini
 .d/
+
+# Things i dont want
+HolonomicLib@1.1.0.zip

@@ -1,6 +1,37 @@
 #include "main.h"
+#include "okapi/api.hpp"
 #include "HolonomicLib/API.hpp"
+using namespace okapi;
 
+okapi::IMU imu(4);
+
+std::shared_ptr<OdomChassisController> chassis = ChassisControllerBuilder()
+	.withMotors(
+		7,	//top left
+		10,	//top right
+		9,	//bottom right
+		8	///bottom left
+	)
+	.withSensors(
+		RotationSensor{1},	//Right sensor
+		RotationSensor{2},	//left sensor
+		RotationSensor{3}	//middle sensor
+	)
+	.withOdometry({{2.75_in, 7_in, 1_in, 2.75_in}, quadEncoderTPR})
+	.buildOdometry();
+
+// X-Drive controlller creation
+std::shared_ptr<AsyncHolonomicChassisController> controller = AsyncHolonomicChassisControllerBuilder(chassis)
+	.withDistGains(
+		//tracking wheel diameter, track width, middle encoder dist, diameter
+		{0.05, 0.0, 0.00065, 0.0}
+	)
+	.withTurnGains(
+		{0.05, 0.0, 0.00065, 0.0}
+	)
+	.build();
+
+std::shared_ptr<XDriveModel> model = std::static_pointer_cast<XDriveModel> (chassis->getModel());
 /**
  * A callback function for LLEMU's center button.
  *
@@ -25,9 +56,11 @@ void on_center_button() {
  */
 void initialize() {
 	pros::lcd::initialize();
-	pros::lcd::set_text(1, "Hello PROS User!");
+	imu.calibrate();
 
-	pros::lcd::register_btn1_cb(on_center_button);
+    while (imu.isCalibrating()) {
+        pros::delay(10);
+    }
 }
 
 /**
@@ -75,19 +108,18 @@ void autonomous() {}
  * task, not resume it from where it left off.
  */
 void opcontrol() {
-	pros::Controller master(pros::E_CONTROLLER_MASTER);
-	pros::Motor left_mtr(1);
-	pros::Motor right_mtr(2);
+	Controller controller = Controller();
 
 	while (true) {
-		pros::lcd::print(0, "%d %d %d", (pros::lcd::read_buttons() & LCD_BTN_LEFT) >> 2,
-		                 (pros::lcd::read_buttons() & LCD_BTN_CENTER) >> 1,
-		                 (pros::lcd::read_buttons() & LCD_BTN_RIGHT) >> 0);
-		int left = master.get_analog(ANALOG_LEFT_Y);
-		int right = master.get_analog(ANALOG_RIGHT_Y);
+		auto heading = imu.get() * okapi::degree;
 
-		left_mtr = left;
-		right_mtr = right;
+		model->fieldOrientedXArcade(
+			controller.getAnalog(ControllerAnalog::leftY),
+			controller.getAnalog(ControllerAnalog::leftX),
+			controller.getAnalog(ControllerAnalog::rightX),
+			heading,
+			0.05
+		);
 
 		pros::delay(20);
 	}
