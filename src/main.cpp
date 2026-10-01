@@ -3,35 +3,11 @@
 #include "HolonomicLib/API.hpp"
 using namespace okapi;
 
-okapi::IMU imu(4);
+std::unique_ptr<okapi::IMU> imu;
+std::shared_ptr<OdomChassisController> chassis;
+std::shared_ptr<AsyncHolonomicChassisController> controller;
+std::shared_ptr<XDriveModel> model;
 
-std::shared_ptr<OdomChassisController> chassis = ChassisControllerBuilder()
-	.withMotors(
-		7,	//top left
-		10,	//top right
-		9,	//bottom right
-		8	///bottom left
-	)
-	.withSensors(
-		RotationSensor{1},	//Right sensor
-		RotationSensor{2},	//left sensor
-		RotationSensor{3}	//middle sensor
-	)
-	.withOdometry({{2.75_in, 7_in, 1_in, 2.75_in}, quadEncoderTPR})
-	.buildOdometry();
-
-// X-Drive controlller creation
-std::shared_ptr<AsyncHolonomicChassisController> controller = AsyncHolonomicChassisControllerBuilder(chassis)
-	.withDistGains(
-		//tracking wheel diameter, track width, middle encoder dist, diameter
-		{0.05, 0.0, 0.00065, 0.0}
-	)
-	.withTurnGains(
-		{0.05, 0.0, 0.00065, 0.0}
-	)
-	.build();
-
-std::shared_ptr<XDriveModel> model = std::static_pointer_cast<XDriveModel> (chassis->getModel());
 /**
  * A callback function for LLEMU's center button.
  *
@@ -55,10 +31,39 @@ void on_center_button() {
  * to keep execution time for this mode under a few seconds.
  */
 void initialize() {
-	pros::lcd::initialize();
-	imu.calibrate();
+	imu = std::make_unique<okapi::IMU>(4);
 
-    while (imu.isCalibrating()) {
+	chassis = ChassisControllerBuilder()
+		.withMotors(
+			-7,	//top left
+			10,	//top right
+			9,	//bottom right
+			-8	///bottom left
+		)
+		.withDimensions(
+			{AbstractMotor::gearset::blue, 0.6},
+			ChassisScales({4_in, 11.5_in}, imev5BlueTPR)
+		)
+		.withOdometry({{2.75_in, 7_in, 1_in, 2.75_in}, quadEncoderTPR})
+		.buildOdometry();
+
+	controller = AsyncHolonomicChassisControllerBuilder(chassis)
+		.withDistGains(
+			//tracking wheel diameter, track width, middle encoder dist, diameter
+			{0.05, 0.0, 0.00065, 0.0}
+		)
+		.withTurnGains(
+			{0.05, 0.0, 0.00065, 0.0}
+		)
+		.build();
+
+	model = std::static_pointer_cast<XDriveModel>(chassis->getModel());
+	chassis->model().setBrakeMode(okapi::AbstractMotor::brakeMode::brake);
+
+	pros::lcd::initialize();
+	imu->calibrate();
+
+    while (imu->isCalibrating()) {
         pros::delay(10);
     }
 }
@@ -108,16 +113,24 @@ void autonomous() {}
  * task, not resume it from where it left off.
  */
 void opcontrol() {
-	Controller controller = Controller();
+	std::cout << "opcontrol" << std::endl;
+
+	if (!imu || !chassis || !controller || !model) {
+		std::cout << "robot not initialized" << std::endl;
+		return;
+	}
+
+	Controller master = Controller();
 
 	while (true) {
-		auto heading = imu.get() * okapi::degree;
+		std::cout << "opcontrol loop" << std::endl;
 
-		model->fieldOrientedXArcade(
-			controller.getAnalog(ControllerAnalog::leftY),
-			controller.getAnalog(ControllerAnalog::leftX),
-			controller.getAnalog(ControllerAnalog::rightX),
-			heading,
+		auto heading = imu->get() * okapi::degree;
+
+		model->xArcade(
+			master.getAnalog(ControllerAnalog::leftX),
+			master.getAnalog(ControllerAnalog::leftY),
+			master.getAnalog(ControllerAnalog::rightX),
 			0.05
 		);
 
