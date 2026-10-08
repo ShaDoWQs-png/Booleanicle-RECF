@@ -8,6 +8,9 @@ std::shared_ptr<OdomChassisController> chassis;
 std::shared_ptr<AsyncHolonomicChassisController> controller;
 std::shared_ptr<XDriveModel> model;
 
+okapi::Motor diffL(14);
+okapi::Motor diffR(16);
+
 /**
  * A callback function for LLEMU's center button.
  *
@@ -121,12 +124,20 @@ void opcontrol() {
 	}
 
 	Controller master = Controller();
+	int tilt = 0;
+	int turn = 0;
 
 	while (true) {
 		std::cout << "opcontrol loop" << std::endl;
 
 		auto heading = imu->get() * okapi::degree;
-
+		tilt = master.getAnalog(ControllerAnalog::rightY) * 12000;
+		if (master.getDigital(ControllerDigital::L2)) {
+			turn = 12000;
+		} else {
+			turn = 0;
+		}
+		
 		model->xArcade(
 			master.getAnalog(ControllerAnalog::leftX),
 			master.getAnalog(ControllerAnalog::leftY),
@@ -134,6 +145,13 @@ void opcontrol() {
 			0.05
 		);
 
+		diffR.moveVoltage(tilt + turn);
+		diffL.moveVoltage(tilt - turn);
+
 		pros::delay(20);
+
+		//pros::blowjob+handy;
+		//cons:: no teeth+lazy;
+		//thank you joe ^
 	}
 }
