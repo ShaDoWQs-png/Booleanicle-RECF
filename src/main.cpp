@@ -1,3 +1,5 @@
+// #define IMU
+
 #include "main.h"
 #include "okapi/api.hpp"
 #include "HolonomicLib/API.hpp"
@@ -66,9 +68,11 @@ void initialize() {
 	pros::lcd::initialize();
 	imu->calibrate();
 
+	#ifdef IMU
     while (imu->isCalibrating()) {
         pros::delay(10);
     }
+	#endif
 }
 
 /**
@@ -128,13 +132,19 @@ void opcontrol() {
 	int turn = 0;
 
 	while (true) {
+		
 		std::cout << "opcontrol loop" << std::endl;
 
 		auto heading = imu->get() * okapi::degree;
 		tilt = master.getAnalog(ControllerAnalog::rightY) * 12000;
-		if (master.getDigital(ControllerDigital::L2)) {
-			turn = 12000;
-		} else {
+
+		if(master.getDigital(ControllerDigital::L1)) {
+			turn = 3000;
+		}
+		if(master.getDigital(ControllerDigital::L2)) {
+			turn = -3000;
+		}
+		if(!(master.getDigital(ControllerDigital::L1) ^ master.getDigital(ControllerDigital::L2))) {
 			turn = 0;
 		}
 		
@@ -144,14 +154,11 @@ void opcontrol() {
 			master.getAnalog(ControllerAnalog::rightX),
 			0.05
 		);
+		
 
 		diffR.moveVoltage(tilt + turn);
 		diffL.moveVoltage(tilt - turn);
 
 		pros::delay(20);
-
-		//pros::blowjob+handy;
-		//cons:: no teeth+lazy;
-		//thank you joe ^
 	}
 }
